@@ -1,4 +1,9 @@
-
+## 
+## Author: DuTim
+## Date: 2023-06-17 21:55:57
+## LastEditTime: 2023-06-17 23:21:34
+## Description: 
+## 
 import torch
 import torch.nn as nn
 import math
@@ -66,6 +71,8 @@ class MultiHeadAttention(nn.Module):
         return O,mean_head_att_score
 
     def forward(self, q, k, v, attention_mask):
+
+        
         """
          * @description: 注意力加残差
          * @param  self : 
