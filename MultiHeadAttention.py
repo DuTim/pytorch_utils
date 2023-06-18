@@ -1,21 +1,22 @@
-## 
-## Author: DuTim
-## Date: 2023-06-17 21:55:57
-## LastEditTime: 2023-06-17 23:21:34
-## Description: 
-## 
+"""
+# * @Author: DuTim
+# * @Date: 2023-06-17 21:55:57
+# * @LastEditTime: 2023-06-18 12:05:23
+# * @Description: 自己实现的multihead attention +FFN 可以用于实现 self_attention  cross_attention 
+"""
 import torch
 import torch.nn as nn
 import math
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model=768, num_heads=12, att_drop_prob=0.1, state_drop_prob=0.5, return_att_score=False,device="cuda:0"):
+    def __init__(self, d_model=768, num_heads=12, att_drop_prob=0.1, state_drop_prob=0.5,use_ffn=False, return_att_score=False,device="cuda:0"):
         super().__init__()
         self.dim = d_model
         self.num_heads = num_heads
         self.att_drop_prob = att_drop_prob
         self.state_drop_prob = state_drop_prob
+        self.use_ffn = use_ffn
         self.return_att_score=return_att_score
         self.device = device
         self.size_per_head = self.dim // self.num_heads  # 64
@@ -26,6 +27,11 @@ class MultiHeadAttention(nn.Module):
         self.lm = nn.LayerNorm(self.dim)
         self.att_drop = nn.Dropout(self.att_drop_prob)
         self.state_drop = nn.Dropout(self.state_drop_prob)
+        ## ffn init
+        self.ffn1 = nn.Linear(self.dim, self.dim*4)
+        self.ffn2 = nn.Linear(self.dim*4, self.dim)
+        self.act = nn.GELU()
+        self.lm_ffn = nn.LayerNorm(self.dim)
 
     def calc_mask_score(self, attention_mask, aim_shape):
         """
@@ -36,7 +42,6 @@ class MultiHeadAttention(nn.Module):
          * @return 
         """
         mask_score = torch.zeros(size=aim_shape).to(self.device)
-        print(mask_score.shape, attention_mask[:, None, None, :].shape)
         mask_score = mask_score + attention_mask[:, None, None, :]
         mask_score = (1.0 - mask_score) * -1000000.0
         return mask_score
@@ -70,9 +75,14 @@ class MultiHeadAttention(nn.Module):
         mean_head_att_score= attention_score.mean(dim=1)
         return O,mean_head_att_score
 
-    def forward(self, q, k, v, attention_mask):
+    def FFN(self, x):
+        hidden = self.act(self.ffn1(x))
+        output = self.ffn2(hidden)
+        output = self.state_drop(output)
+        output = self.lm_ffn(x + output)
+        return output
 
-        
+    def forward(self, q, k, v, attention_mask):
         """
          * @description: 注意力加残差
          * @param  self : 
@@ -82,9 +92,11 @@ class MultiHeadAttention(nn.Module):
          * @param  attention_mask : # bxS
                     1 normal token
                     0 masked token
-         * @return xb :xLxd ; att_score: B * L * S
+         * @return x: bxLxd ; att_score: B * L * S
         """
         x,att_score = self.SelfAttention(q, k, v, attention_mask)
+        if self.use_ffn:
+            x =self.FFN(x)
         if self.return_att_score:
             return x,att_score
         else:
